@@ -22,7 +22,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-MODEL = tf.keras.models.load_model(r"D:\Projects\Computer Vision\cat_and_dog\saved_models\converted_models\quantization_DEFAULT_8bit_model_h5_to_tflite.tflite")
+# Load the TFLite model
+interpreter = tf.lite.Interpreter(model_path=r"D:\Projects\Computer Vision\cat_and_dog\saved_models\converted_models\quantization_DEFAULT_8bit_model_h5_to_tflite.tflite")
+interpreter.allocate_tensors()
+
+# Get input and output details
+input_details = interpreter.get_input_details()
+output_details = interpreter.get_output_details()
 
 
 CLASS_NAMES = ['Abyssinian',
@@ -75,16 +81,21 @@ def read_file_as_image(data) -> np.ndarray:
     return image.astype(np.float32)
 
 @app.post("/predict")
-async def predict(
-    file: UploadFile = File(...)
-):
+async def predict(file: UploadFile = File(...)):
     image = read_file_as_image(await file.read())
-    img_batch = np.expand_dims(image, 0)
-    
-    predictions = MODEL.predict(img_batch)
+    img_batch = np.expand_dims(image, 0).astype(np.float32)
 
-    predicted_class = CLASS_NAMES[np.argmax(predictions[0])]
-    confidence = np.max(predictions[0])
+    # Set input tensor
+    interpreter.set_tensor(input_details[0]['index'], img_batch)
+
+    # Run inference
+    interpreter.invoke()
+
+    # Get output
+    output = interpreter.get_tensor(output_details[0]['index'])[0]
+    predicted_class = CLASS_NAMES[np.argmax(output)]
+    confidence = np.max(output)
+
     return {
         'class': predicted_class,
         'confidence': float(confidence)
